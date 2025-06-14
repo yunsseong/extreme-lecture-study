@@ -63,6 +63,13 @@ http.authorizeHttpResponse(auth) -> auth
 
 ## 내부 구조
 ![img.png](image/requestMatcherAuthorizationManagerStructure.png)
+1. Client Request -> Spring Security 필터 체인 진입
+2. AuthorizationFilter가 요청 정보와 인증 객체(Authentication)를 SecurityContextHolder에서 가져옴
+3. RequestMatcherDelegatingAuthorizationManager에게 요청 위임
+4. 요청 경로 패턴에 따라 어떤 AuthorizationManager를 쓸지 결정
+5. AuthorizationManager는 AuthorizationDecision 객체를 반환 
+6. AuthorizationDecision#isGranted() -> true면 통과, false면 AccessDeniedException 발생
+
 
 ## AuthenticatedAuthorizationManager
 ### 구조
@@ -76,6 +83,26 @@ http.authorizeHttpResponse(auth) -> auth
 
 ### 흐름도
 ![img.png](image/authenticatedAuthorizationManagerFlowChart.png)
+1. Client 요청
+2. RequestMatcherDelegatingAuthorizationManager
+   - Spring Security에서 해당 매니저에서 요청 경로와 등록된 매핑 정보를 비교
+   - 어떤 AuthorizationManager가 이 요청을 처리할지 결정
+     - mappings 리스트를 순회하며 각 RequestMatcher와 요청이 isMatch() 되는지 검사
+     - 일치할 경우 getEntry()를 통해 대응되는 AuthorizationManager를 반환
+3. AuthenticatedAuthorizationManager
+   - 오직 사용자가 인증되었는지만 확인 (권한 고려 x)
+4. FullyAuthenticatedAuthorizationStrategy
+   - 인증 상태를 세가지로 나눠 확인
+     - 익명 -> 거부
+     - Remember-Me 인증 -> 거부
+     - 완전 인증 -> 허용
+   - 검사 메서드
+     - isGranted() -> boolean
+       - 인증된 사용자 -> true -> 요청 처리 진행
+       - 인증되지 않은 사용자 -> false
+5. AuthorizationDecision
+   - true -> Spring MVC로 요청 전달
+   - false -> AccessDeniedException 발생 -> 403 응답 변환
 
 ## AuthorityAuthorizationManager
 ### 구조
@@ -88,6 +115,16 @@ http.authorizeHttpResponse(auth) -> auth
 
 ### 흐름
 ![img.png](image/AuthorityAuthorizationManagerFlowChart.png)
+1. 클라이언트 요청
+2. RequestMatcherDelegatingAuthorizationManager 동작
+   - 등록된 mappings 중에서 요청 경로와 일치하는지 RequestMatcher로 검사
+     - isMatch() == true면 해당 엔트리의 AuthorizationManager를 꺼냄 (getEntry())
+3. AuthorityAuthorizationManager 처리
+   - 내부적으로 AuthoritiesAuthorizationManager 사용
+   - Authentication 객체의 getAuthorities() 값을 검사
+4. AuthoritiesAuthorizationManager.isGranted()
+   - isGranted() == true : 요청 허용 -> Spring MVC로 전달
+   - isGranted() == false : AuthorizationDecision(false) -> AccessDeniedException 발생
 
 # 요청 기반 Custom_AuthorizationManager 구현
 - 인가 설정 시 선언적 방식이 아닌 프로그래밍 방식으로 구현 가능
